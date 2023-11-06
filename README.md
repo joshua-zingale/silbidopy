@@ -4,6 +4,9 @@
 # Files
 - README.md | text | information about this repository
 - silbidopy | folder | the Python package
+   - \_\_init\_\_.py | python | boiler plate to create a package
+   - readBinaries.py | python | code to read *silbido* files
+   - writeBinaries.py | python | code to write *silbido* files
 
 # Use
 The package has two files that can be imported directly into Ptyhon code, **readBinaries.py** has code to read the *silbido* format and **writeBinaries.py** has code to write binary files in the *silbido* format.
@@ -42,7 +45,7 @@ One such output dictionary may be rendered thus:
 ```
 
 ## Writing files
-The binary writer currently leaves all fields blank except for a dummy value that is used as the graphId and the times and frequencies for each tonal. The following code first reads in an annotation file. Then, all but the first three annotations are dropped and a new file is written that contains only the these first three annotations.
+The binary writer currently leaves all fields blank except for a dummy value that is used as the graphId and the times and frequencies for each tonal. The following code first reads in an annotation file. Then, all but the first three annotations are dropped and a new binary *silbido* file is written that contains only the these first three annotations.
 ```python
 from silbidopy.readBinaries import tonalReader
 from silbidopy.writeBinaries import writeTimeFrequencyBinary
