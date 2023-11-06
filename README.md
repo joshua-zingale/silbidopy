@@ -17,7 +17,7 @@ The follow code snippet loads the annotations from a *silbido* annotation file a
 from silbidopy.readBinaries import tonalReader
 
 # Initialize the reader
-tr = tonalReader("annotation.ann")
+tr = tonalReader("annotations.ann")
 
 # Read the entire file, saving only the time-frequency information
 contours = tr.getTimeFrequencyContours()
@@ -33,7 +33,7 @@ Alternatively, if more information from each tonal is desired, the reader may be
 from silbidopy.readBinaries import tonalReader
 
 # Initialize the reader
-tr = tonalReader("annotation.ann")
+tr = tonalReader("annotations.ann")
 
 # Iterate through the reader to get each tonal
 for tonal in tr:
@@ -51,7 +51,7 @@ from silbidopy.readBinaries import tonalReader
 from silbidopy.writeBinaries import writeTimeFrequencyBinary
 
 # Initialize the reader
-tr = tonalReader("annotation.ann")
+tr = tonalReader("annotations.ann")
 
 # Read the entire file, saving only the time-frequency information
 contours = tr.getTimeFrequencyContours()
