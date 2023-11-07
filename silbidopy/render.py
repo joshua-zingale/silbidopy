@@ -1,4 +1,3 @@
-from silbidopy.readBinaries import tonalReader
 import numpy as np
 from silbidopy.sigproc import magspec, framesig
 import wavio
