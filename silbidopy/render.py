@@ -1,6 +1,6 @@
-from readBinaries import tonalReader
+from silbidopy.readBinaries import tonalReader
 import numpy as np
-from sigproc import magspec, framesig
+from silbidopy.sigproc import magspec, framesig
 import wavio
 import math
 
@@ -19,9 +19,11 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     :param min_freq: Hz, lower bound of frequency for spectrogram
     :param max_freq: Hz, upper bound of frequency for spectrogram
     :param start_time: ms, the beginning of where the audioFile is read
-    :param end_time: ms, the end of where the audioFile is read.
+    :param end_time: ms, the end of where the audioFile is read. If end > the length of
+                     of the file, then the file is read only to its end.
 
-    :returns: the spectrogram
+    :returns: A tuple with both the spectrogram and the time at which the
+              spectrogram ended in ms: (spectogram, end_time)
     '''
 
     freq_resolution = 1000 / frame_time_span
@@ -47,7 +49,6 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     frame_sample_span = int(math.floor(frame_time_span / 1000 * wav_data.rate) + 1)
     step_sample_span = int(math.floor(step_time_span / 1000 * wav_data.rate))
     # No frames if the audio file is too short
-
     if wav_data.data[start_frame:end_frame].shape[0] < frame_sample_span:
         frames = []
     else:
@@ -73,7 +74,9 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     # Flip spectrogram to match expectations for display
     # and scall to be 0-255
     spectrogram_flipped = spectogram[::-1, ] * 255
-    return spectrogram_flipped
+
+    actual_end_time = start_time + spectrogram_flipped.shape[1] * step_time_span
+    return spectrogram_flipped, actual_end_time
 
 
 
