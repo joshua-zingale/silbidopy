@@ -1,11 +1,13 @@
 # silbidopy
-*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows both for automatic- and expert-generated whistle-and-moan annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files.
+*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows both for automatic- and expert-generated whistle-and-moan annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering the loaded annotations.
 
 # Files
 - README.md | text | information about this repository
 - silbidopy | folder | the Python package
    - \_\_init\_\_.py | python | boiler plate to create a package
    - readBinaries.py | python | code to read *silbido* files
+   - render.py | python | code to render *silbido* annotations
+   - sigproc.py | python | helper functions for signal processing
    - writeBinaries.py | python | code to write *silbido* files
 
 # Use
