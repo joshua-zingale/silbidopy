@@ -131,10 +131,6 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
             time_frame = (time*1000 - start_time) * image_width / time_span
             freq_frame = (freq - min_freq) / freq_resolution
 
-            # check time bounds
-            if round(time) < start_time / 1000 or round(time) > end_time / 1000:
-                continue
-
             if first_flag:
                 prev_time_frame = time_frame
                 prev_freq_frame = freq_frame
