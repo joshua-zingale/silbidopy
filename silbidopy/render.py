@@ -1,5 +1,5 @@
 import numpy as np
-from silbidopy.sigproc import magspec, framesig
+from silbidopy.sigproc import magspec, frame_signal
 import wavio
 import math
 
@@ -43,16 +43,16 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     # #
 
     start_frame = int(start_time / 1000 * wav_data.rate)
-    end_frame = int((end_time / 1000 + 1 / freq_resolution - step_time_span / 1000)* wav_data.rate)
+    end_frame = int((end_time / 1000 + frame_time_span / 1000 - step_time_span / 1000)* wav_data.rate)
 
-    frame_sample_span = int(math.floor(frame_time_span / 1000 * wav_data.rate) + 1)
-    step_sample_span = int(math.floor(step_time_span / 1000 * wav_data.rate))
+    frame_sample_span = int(math.floor(frame_time_span / 1000 * wav_data.rate))
+    step_sample_span = step_time_span / 1000 * wav_data.rate
     # No frames if the audio file is too short
     if wav_data.data[start_frame:end_frame].shape[0] < frame_sample_span:
         frames = []
     else:
-        frames = framesig(wav_data.data.ravel()[start_frame:end_frame], frame_sample_span, step_sample_span)
-
+        frames = frame_signal(wav_data.data.ravel()[start_frame:end_frame], frame_sample_span, step_sample_span)
+    
     # #
     # Make spectrogram
     # #
@@ -63,7 +63,7 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
 
     # Include only the desired frequency range
     clip_bottom = int(min_freq // freq_resolution)
-    clip_top = int(max_freq // freq_resolution + 1) # TODO why + 1?
+    clip_top = int(max_freq // freq_resolution) 
     spectogram = singal_magspec.T[clip_bottom:clip_top]
     spectogram = np.log10(spectogram)
 
@@ -71,8 +71,8 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
 
 
     # Flip spectrogram to match expectations for display
-    # and scall to be 0-255
-    spectrogram_flipped = spectogram[::-1, ] * 255
+    # and DO NOT scale to be 0-255
+    spectrogram_flipped = spectogram[::-1, ]
 
     actual_end_time = start_time + spectrogram_flipped.shape[1] * step_time_span
     return spectrogram_flipped, actual_end_time
@@ -96,14 +96,14 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     :param start_time: ms, the beginning of where the audioFile is read
     :param end_time: ms, the end of where the audioFile is read. -1 reads until the end
 
-    :returns: the annotation mask 
+    :returns: annotation mask
     '''
 
     
 
     # Get dimensions for mask
     image_width = int((end_time - start_time) / step_time_span)
-    image_height = int((max_freq - min_freq) * frame_time_span/1000 + 1) # TODO why + 1?
+    image_height = int((max_freq - min_freq) * frame_time_span/1000)
 
     mask = np.zeros((image_height, image_width))
 
@@ -112,6 +112,7 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     high = np.searchsorted([a[0][0] for a in annotations], end_time / 1000, side='left')
 
     annotations = annotations[low:high]
+
 
     # if no annotations to plot
     if (low >= high):
@@ -167,8 +168,8 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
             prev_freq_frame = freq_frame
     
     # Flip spectrogram to match expectations for display
-    # and scall to be 0-255
-    mask = mask[::-1, ] * 255
+    # and DO NOT scale to be 0-255
+    mask = mask[::-1, ]
 
     return mask
 
