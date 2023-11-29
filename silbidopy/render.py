@@ -145,7 +145,7 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
 
             distance = np.sqrt((time_frame-prev_time_frame)**2 + (freq_frame - prev_freq_frame)**2)
             # Draw interpolating line
-            for t in list(np.linspace(prev_time_frame, time_frame, math.ceil(distance))):
+            for t in list(np.linspace(prev_time_frame, time_frame, math.ceil(distance) + 1)):
                 
                 # check that time is within the image
                 if round(t) < 0 or round(t) >= image_width:
