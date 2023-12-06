@@ -33,7 +33,7 @@ class AudioTonalDataset(Dataset):
         :param time_patch_frames: the number of time frames per ouput datum, i.e. the number per patch.
 
         :param cache_wavs: If True, all wav files are saved in memory;
-                           else, get datum acces opens and closes a
+                           else, each datum access opens and closes a
                            wav file.
 
         :returns: A tuple with both the spectrogram and the time at which the
