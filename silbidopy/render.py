@@ -108,14 +108,12 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     mask = np.zeros((image_height, image_width))
 
     # Get only the annotations that will be present in the mask
-    low = np.searchsorted([a[-1][0] for a in annotations], start_time / 1000, side='right')
     high = np.searchsorted([a[0][0] for a in annotations], end_time / 1000, side='left')
-
-    annotations = annotations[low:high]
+    annotations = [a for a in annotations[:high] if a[-1][0] >= start_time/ 1000 and a[0][0] < end_time/1000]
 
 
     # if no annotations to plot
-    if (low >= high):
+    if len(annotations) == 0:
          return mask
 
     freq_resolution = 1000 / frame_time_span
@@ -127,7 +125,6 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
         prev_freq_frame = 0
         first_flag = True
         for time, freq in annotation:
-
             # get approximate pixel frame for timestamp & frequency
             time_frame = (time*1000 - start_time) * image_width / time_span
             freq_frame = (freq - min_freq) / freq_resolution
