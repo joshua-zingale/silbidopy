@@ -9,8 +9,8 @@ import os
 class AudioTonalDataset(Dataset):
     def __init__(self, audio_dir, annotation_dir, frame_time_span = 8, step_time_span = 2,
                  spec_clip_min = 0, spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
-                 time_patch_frames = 64, freq_patch_frames = 64, time_patch_advance = 64,
-                 freq_patch_advance = 64, cache_wavs = True):
+                 time_patch_frames = 64, freq_patch_frames = 64, time_patch_advance = None,
+                 freq_patch_advance = None, cache_wavs = True):
         '''
         A Dataset that pulls spectrogram's and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -31,6 +31,9 @@ class AudioTonalDataset(Dataset):
         :param min_freq: Hz, lower bound of frequency for spectrogram
         :param max_freq: Hz, upper bound of frequency for spectrogram
         :param time_patch_frames: the number of time frames per ouput datum, i.e. the number per patch.
+        :param time_patch_advance: the number of time frames between successive patches.                                   Defaults to time_patch_frames (also when argument set to None)
+        :param freq_patch_frames: the number of frequency frames per ouput datum, i.e. the number per patch.
+        :param freq_patch_advance: the number offrequency frames between successive patches.                                   Defaults to freq_patch_frames (also when argument set to None)
 
         :param cache_wavs: If True, all wav files are saved in memory;
                            else, each datum access opens and closes a
@@ -39,7 +42,7 @@ class AudioTonalDataset(Dataset):
         :returns: A tuple with both the spectrogram and the time at which the
                     spectrogram ended in ms: (spectogram, end_time)
         '''
-        
+       
         ## COLLECT AUDIO AND ANNOTATIONS ##
         # colelct all .wav files
         wav_files = findfiles(audio_dir, "*.wav")
@@ -63,10 +66,10 @@ class AudioTonalDataset(Dataset):
        
        ## SAVE DATASET VALUES ##
         freq_resolution = 1000 / frame_time_span
-        self.patch_freq_length_hz = freq_resolution * freq_patch_frames
-        self.freq_patch_advance_hz = freq_resolution * freq_patch_advance
-        self.patch_time_length_ms = step_time_span * time_patch_frames
-        self.time_patch_advance_ms = step_time_span * time_patch_advance
+        self.freq_patch_length_hz = freq_resolution * freq_patch_frames
+        self.freq_patch_advance_hz = self.freq_patch_length_hz if freq_patch_advance == None else freq_resolution * freq_patch_advance
+        self.time_patch_length_ms = step_time_span * time_patch_frames
+        self.time_patch_advance_ms = self.time_patch_length_ms if time_patch_advance == None else step_time_span * time_patch_advance
 
         self.frame_time_span = frame_time_span
         self.step_time_span = step_time_span
@@ -93,9 +96,9 @@ class AudioTonalDataset(Dataset):
             file_length_ms = num_samples * 1000 / wav_file.rate
 
             # determine & append number of patches in file
-            num_freq_divisions = int((max_freq - self.patch_freq_length_hz) / self.freq_patch_advance_hz)
+            num_freq_divisions = int((max_freq - self.freq_patch_length_hz) / self.freq_patch_advance_hz)
 
-            num_time_divisions = int((file_length_ms - self.patch_time_length_ms - frame_time_span) / self.time_patch_advance_ms)
+            num_time_divisions = int((file_length_ms - self.time_patch_length_ms - frame_time_span) / self.time_patch_advance_ms)
 
             self.num_patches.append(num_freq_divisions * num_time_divisions)
 
@@ -109,7 +112,51 @@ class AudioTonalDataset(Dataset):
                     "num_time_divisions": num_time_divisions,
                     })
 
+    def get_positive_indices(self):
+        '''
+        Returns a list that contains all positive indices,
+        i.e. all indices for which at least one pixel in the label has
+        tonal energy
+        '''
 
+        # Each node can be in multiple patches.
+        # Get the possible number of patches that could overlap with a node
+        freq_patch_range = self.freq_patch_length_hz / self.freq_patch_advance_hz
+        time_patch_range = self.time_patch_length_ms / self.time_patch_advance_ms
+        
+        patches_cumsum = np.cumsum(np.append([0], self.num_patches))
+        positive_set = set()
+        
+        for file_idx in range(len(self.bin_files)):
+            contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
+
+            num_time_divisions = self.file_info[file_idx]["num_time_divisions"]
+            for contour in contours:
+                for time, freq in contour:
+                    # skip out of range nodes
+                    if freq < self.min_freq or freq >= self.max_freq:
+                        continue
+                    # seconds to miliseconds
+                    time = time *1000
+
+                    # Each node can be in multiple patches
+                    # Start with the highest frequency and time patch
+                    freq_patch = ((freq - self.min_freq) / self.freq_patch_advance_hz)
+                    time_patch = (time / self.time_patch_advance_ms)
+
+                    # The number of frequency and time frames that overlap
+                    # with the node
+                    freq_overlap = np.ceil(freq_patch_range - freq_patch % 1).astype(int)
+                    time_overlap = np.ceil(time_patch_range - time_patch % 1).astype(int)
+                    
+                    # Add indices to positive set
+                    for f_idx in range(int(freq_patch), max(int(freq_patch) - freq_overlap, -1), -1):
+                        for t_idx in range(int(time_patch), max(int(time_patch) - time_overlap, -1), -1):
+                            idx = t_idx + f_idx * num_time_divisions + patches_cumsum[file_idx]
+                    
+                            positive_set.add(idx)
+
+        return list(positive_set)
 
     def __len__(self):
         return sum(self.num_patches)
@@ -130,8 +177,8 @@ class AudioTonalDataset(Dataset):
         start_time = (idx % num_time_divisions) * self.time_patch_advance_ms
         start_freq = (idx // num_time_divisions) * self.freq_patch_advance_hz + self.min_freq
 
-        end_time = start_time + self.patch_time_length_ms
-        end_freq = start_freq + self.patch_freq_length_hz
+        end_time = start_time + self.time_patch_length_ms
+        end_freq = start_freq + self.freq_patch_length_hz
        
         # get wav file
         wav_data = None
