@@ -114,7 +114,7 @@ class AudioTonalDataset(Dataset):
 
     def get_positive_indices(self):
         '''
-        Returns a list that contains all positive indices,
+        Returns a set that contains all positive indices,
         i.e. all indices for which at least one pixel in the label has
         tonal energy
         '''
@@ -156,7 +156,7 @@ class AudioTonalDataset(Dataset):
                     
                             positive_set.add(idx)
 
-        return list(positive_set)
+        return positive_set
 
     def __len__(self):
         return sum(self.num_patches)
