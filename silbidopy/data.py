@@ -1,6 +1,6 @@
 from silbidopy.render import getSpectrogram, getAnnotationMask
 from silbidopy.readBinaries import tonalReader
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 import numpy as np
 import fnmatch
 import wavio
@@ -10,7 +10,8 @@ class AudioTonalDataset(Dataset):
     def __init__(self, audio_dir, annotation_dir, frame_time_span = 8, step_time_span = 2,
                  spec_clip_min = 0, spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
                  time_patch_frames = 64, freq_patch_frames = 64, time_patch_advance = None,
-                 freq_patch_advance = None, cache_wavs = True):
+                 freq_patch_advance = None, cache_wavs = True,
+                 cache_annotations = True):
         '''
         A Dataset that pulls spectrogram's and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -38,6 +39,11 @@ class AudioTonalDataset(Dataset):
         :param cache_wavs: If True, all wav files are saved in memory;
                            else, each datum access opens and closes a
                            wav file.
+        :param cache_annotations: If True, all annotations are saved
+                                  in memory; else, each datum access
+                                  loads the relevant annotations.
+                                  WARNING: setting to false leads to
+                                  a significant slowdown.
 
         :returns: A tuple with both the spectrogram and the time at which the
                     spectrogram ended in ms: (spectogram, end_time)
@@ -83,6 +89,7 @@ class AudioTonalDataset(Dataset):
         self.freq_patch_advance = freq_patch_advance
         
         self.cache_wavs = cache_wavs
+        self.cache_annotations = cache_annotations
 
         self.bin_files = bin_files
         self.anno_wav_files = anno_wav_files
@@ -90,7 +97,7 @@ class AudioTonalDataset(Dataset):
         # Get length of dataset
         self.num_patches = []
         self.file_info = []
-        for wav_file in (wavio.read(w) for w in anno_wav_files):
+        for i, wav_file in enumerate((wavio.read(w) for w in anno_wav_files)):
             num_samples = wav_file.data.shape[0]
 
             file_length_ms = num_samples * 1000 / wav_file.rate
@@ -102,16 +109,25 @@ class AudioTonalDataset(Dataset):
 
             self.num_patches.append(num_freq_divisions * num_time_divisions)
 
+            self.file_info.append({
+                "num_time_divisions": num_time_divisions,
+                })
             if cache_wavs:
-                self.file_info.append({
-                    "num_time_divisions": num_time_divisions,
-                    "wav_data": wav_file,
-                    })
-            else:
-                self.file_info.append({
-                    "num_time_divisions": num_time_divisions,
-                    })
+                self.file_info[i]["wav_data"] = wav_file
+            if cache_annotations:
+                self.file_info[i]["contours"] =  tonalReader(self.bin_files[i]).getTimeFrequencyContours()
 
+    def get_balanced_iterable(self, epoch_size = None):
+        '''
+        Returns an iterable PyTorch dataset, for which the output values
+        alternate between positive and negative.
+
+        :param epoch_size: the size of an epoch, i.e. of the iterator.
+                           If None, which is default, epoch_size is set to
+                           be twice the size of the minority class.
+        '''
+        return BalancedIterableDataset(self, self.get_positive_indices(),
+                epoch_size = epoch_size)
     def get_positive_indices(self):
         '''
         Returns a set that contains all positive indices,
@@ -128,7 +144,11 @@ class AudioTonalDataset(Dataset):
         positive_set = set()
         
         for file_idx in range(len(self.bin_files)):
-            contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
+            contours = None
+            if self.cache_annotations:
+                contours = self.file_info[file_idx]["contours"]
+            else:
+                contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
 
             num_time_divisions = self.file_info[file_idx]["num_time_divisions"]
             for contour in contours:
@@ -195,8 +215,13 @@ class AudioTonalDataset(Dataset):
                 spec_clip_max = self.spec_clip_max,
                 min_freq = start_freq, max_freq = end_freq,
                 start_time = start_time, end_time = end_time)
-
-        contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
+        
+        # get contours
+        contours = None
+        if self.cache_annotations:
+            contours = self.file_info[file_idx]["contours"]
+        else:
+            contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
         
         label = getAnnotationMask(contours,
                 frame_time_span = self.frame_time_span,
@@ -206,6 +231,53 @@ class AudioTonalDataset(Dataset):
 
         return datum, label
 
+class BalancedIterableDataset(IterableDataset):
+    def __init__(self, dataset, positive_set, epoch_size = None):
+        '''
+        An IterableDataset that samples from a map-style
+        Dataset such that there is an equal chance of sampling
+        a positive sample to that of a negative sample.
+        The dataset is shuffled at the load of the iterable,
+        i.e. at the start of each epoch.
+
+        :param dataset: the map-style dataset
+        :param positive_set: a Python set that contains the positive indices
+                       for the map-style input dataset
+        :param epoch_size: the size of an epoch, i.e. of the iterator.
+                           If None, which is default, epoch_size is set to
+                           be twice the size of the minority class.
+        '''
+        
+        length = len(dataset)
+        negative_set = set(range(length)) - positive_set
+
+        self.positive_indices = np.array(list(positive_set))
+        self.negative_indices = np.array(list(negative_set))
+
+        self.dataset = dataset
+
+        self.next_is_positive = True
+
+        if epoch_size == None:
+            self.epoch_size = 2 * min(len(self.positive_indices), len(self.negative_indices))
+        else:
+            self.epoch_size = epoch_size
+
+    def __iter__(self):
+        np.random.shuffle(self.positive_indices)
+        np.random.shuffle(self.negative_indices)
+
+        for i in range(self.epoch_size):
+            if self.next_is_positive:
+                self.next_is_positive = False
+                idx = self.positive_indices[i // 2]
+                yield self.dataset.__getitem__(idx)
+            else:
+                self.next_is_positive = True
+                idx = self.negative_indices[i // 2]
+                yield self.dataset.__getitem__(idx)
+
+## HELPERS ##
 # find file  with certain pattern.
 def findfiles(path, fnmatchex='*.*'):
     result = []

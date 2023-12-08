@@ -77,8 +77,6 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     actual_end_time = start_time + spectrogram_flipped.shape[1] * step_time_span
     return spectrogram_flipped, actual_end_time
 
-
-
 def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
                       min_freq = 5000, max_freq = 50000, start_time = 0, end_time=-1):
     '''
@@ -135,6 +133,20 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
                 first_flag = False
                 continue
             
+            # If the time frame is above image width,
+            # all future ones will be in this annotation
+            if prev_time_frame >= image_width:
+                break
+            
+            # If time frame is before the image
+            if time_frame < -0.5:
+                continue
+
+            # If both are prev and curr are outside image
+            if ((freq_frame < -0.5 and prev_freq_frame < -0.5) or
+                    (freq_frame >= image_height and prev_freq_frame >= image_height)):
+                continue
+
             # Interpolating line function
             freq_time_line = (
                 lambda x: freq_frame + (prev_freq_frame - freq_frame) / 
@@ -142,24 +154,25 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
 
             distance = np.sqrt((time_frame-prev_time_frame)**2 + (freq_frame - prev_freq_frame)**2)
             # Draw interpolating line
-            for t in list(np.linspace(prev_time_frame, time_frame, math.ceil(distance) + 1)):
+            for t in np.linspace(prev_time_frame, time_frame, math.ceil(distance) + 1):
                 
+                t_rounded = round(t)
                 # check that time is within the image
-                if round(t) < 0 or round(t) >= image_width:
+                if t_rounded < 0 or t_rounded >= image_width:
                     continue
 
                 # get frequency from interpolation line.
                 if time_frame - prev_time_frame < 1e-10:
-                    current_freq = freq
+                    curr_freq_rounded = round(freq)
                 else:
-                    current_freq = freq_time_line(t)
+                    curr_freq_rounded = round(freq_time_line(t))
                 
                 # Check that frequency is within the image
-                if round(current_freq) < 0 or round(current_freq) >= image_height:
+                if curr_freq_rounded < 0 or curr_freq_rounded >= image_height:
                     continue
                 
                 # Draw pixel
-                mask[round(current_freq), round(t)] = 1
+                mask[curr_freq_rounded, t_rounded] = 1
 
             prev_time_frame = time_frame
             prev_freq_frame = freq_frame
