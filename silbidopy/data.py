@@ -116,6 +116,26 @@ class AudioTonalDataset(Dataset):
                 self.file_info[i]["wav_data"] = wav_file
             if cache_annotations:
                 self.file_info[i]["contours"] =  tonalReader(self.bin_files[i]).getTimeFrequencyContours()
+    
+    def get_balanced_dataset(self, positive_proportion = 0.5):
+        '''
+        Builds a new dataset that wraps around the current one. The new
+        dataset will include entries of the current dataset
+        such that a specific proportion of the entries will be positive.
+        The generated dataset will randomly select entries from the current
+        dataset to include.
+        The generated dataset also depends on the current dataset's
+        existence to function.
+
+        :param positive_proportion: the proportion of entries that will
+                                    be positive in the new dataset.
+                                    Setting this to 0.5 results in a
+                                    balanced dataset
+
+        :returns: the newly balanced dataset
+        '''
+        return BalancedDataset(self, self.get_positive_indices(),
+                positive_proportion = positive_proportion)
 
     def get_balanced_iterable(self, epoch_size = None):
         '''
@@ -128,6 +148,7 @@ class AudioTonalDataset(Dataset):
         '''
         return BalancedIterableDataset(self, self.get_positive_indices(),
                 epoch_size = epoch_size)
+
     def get_positive_indices(self):
         '''
         Returns a set that contains all positive indices,
@@ -142,7 +163,8 @@ class AudioTonalDataset(Dataset):
         
         patches_cumsum = np.cumsum(np.append([0], self.num_patches))
         positive_set = set()
-        
+       
+        # Get the index of each patch that has at least one node in it
         for file_idx in range(len(self.bin_files)):
             contours = None
             if self.cache_annotations:
@@ -230,6 +252,64 @@ class AudioTonalDataset(Dataset):
                 start_time = start_time, end_time = end_time)
 
         return datum, label
+
+class BalancedDataset(Dataset):
+    def __init__(self, dataset, positive_set,
+            positive_proportion = 0.5):
+        '''
+        A dataset that rebalances another dataset such that a certain
+        proportion of the indices correspond to positive labels. The
+        size of this dataset will be as large as possible given the
+        number of positive and negative labels in the original dataset
+        and the desired proportion of labels that be positive. The order
+        of this dataset is random, including which indices from the
+        majority class are selected for inclusion.
+
+        :param dataset: the dataset for which a balanced dataset will be
+                        created
+        :param positive_set: a Python set that contains all of the indices
+                             in dataset that correspond to a positive
+                             label
+        :param positive_proportion: the proportion of indices in this
+                                    new dataset that will correspond to
+                                    positive labels
+
+        '''
+        
+
+        positive_indices = np.array(list(positive_set))
+        negative_indices = np.array(list(set(range(len(dataset))) - positive_set))
+        np.random.shuffle(positive_indices)
+        np.random.shuffle(negative_indices)
+
+        # Get number of positive and negative indices to be included
+        init_len_p = len(positive_indices)
+        init_len_n = len(negative_indices)
+
+        len_p = int(min(
+                init_len_p,
+                positive_proportion * init_len_n / (1-positive_proportion)
+                ))
+        len_n = int(
+                (1 - positive_proportion) * len_p / positive_proportion
+                )
+
+        positive_indices = positive_indices[:len_p]
+        negative_indices = negative_indices[:len_n]
+        
+        # Combine the positive and negative index arrays
+        self.indices = np.append(positive_indices, negative_indices)
+        np.random.shuffle(self.indices)
+
+        self.dataset = dataset
+    
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        return self.dataset.__getitem__(self.indices[idx])
+
+
 
 class BalancedIterableDataset(IterableDataset):
     def __init__(self, dataset, positive_set, epoch_size = None):
