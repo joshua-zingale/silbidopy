@@ -1,5 +1,5 @@
 # silbidopy
-*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows both for automatic- and expert-generated whistle-and-moan annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering the loaded annotations.
+*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows for both automatic- and expert-generated tonal annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering the loaded annotations.
 
 # Files
 - README.md | text | information about this repository
@@ -39,7 +39,7 @@ tr = tonalReader("annotations.ann")
 
 # Iterate through the reader to get each tonal
 for tonal in tr:
-   print(tonal)
+ print(tonal)
 ```
 One such output dictionary may be rendered thus:
 ```python
