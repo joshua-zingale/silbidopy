@@ -64,18 +64,17 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     # Include only the desired frequency range
     clip_bottom = int(min_freq // freq_resolution)
     clip_top = int(max_freq // freq_resolution) 
-    spectogram = singal_magspec.T[clip_bottom:clip_top]
-    spectogram = np.log10(spectogram)
-
-    spectogram = normalize3(spectogram, spec_clip_min, spec_clip_max)
-
+    spectrogram = singal_magspec.T[clip_bottom:clip_top]
+    spectrogram = np.log10(spectrogram)
 
     # Flip spectrogram to match expectations for display
-    # and DO NOT scale to be 0-255
-    spectrogram_flipped = spectogram[::-1, ]
+    # Also normalize
+    spectrogram = normalize3(spectrogram[::-1,], spec_clip_min, spec_clip_max)
 
-    actual_end_time = start_time + spectrogram_flipped.shape[1] * step_time_span
-    return spectrogram_flipped, actual_end_time
+
+
+    actual_end_time = start_time + spectrogram.shape[1] * step_time_span
+    return spectrogram, actual_end_time
 
 def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
                       min_freq = 5000, max_freq = 50000, start_time = 0, end_time=-1):
@@ -125,7 +124,7 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
         for time, freq in annotation:
             # get approximate pixel frame for timestamp & frequency
             time_frame = (time*1000 - start_time) * image_width / time_span
-            freq_frame = (freq - min_freq) / freq_resolution
+            freq_frame = (max_freq - freq) / freq_resolution
 
             if first_flag:
                 prev_time_frame = time_frame
@@ -177,10 +176,6 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
             prev_time_frame = time_frame
             prev_freq_frame = freq_frame
     
-    # Flip spectrogram to match expectations for display
-    # and DO NOT scale to be 0-255
-    mask = mask[::-1, ]
-
     return mask
 
 
