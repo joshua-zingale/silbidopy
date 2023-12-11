@@ -4,7 +4,8 @@
 # Files
 - README.md | text | information about this repository
 - silbidopy | folder | the Python package
-   - \_\_init\_\_.py | python | boiler plate to create a package
+   - \_\_init\_\_.py | python | boiler plate to create a package.
+- data.py | python | code to load spectrograms & annotations as a PyTorch dataset.
    - readBinaries.py | python | code to read *silbido* files
    - render.py | python | code to render *silbido* annotations
    - sigproc.py | python | helper functions for signal processing
@@ -81,7 +82,7 @@ This can help with generating a corresponding annotation mask.
 
 Here is an example program that generates a spectrogram:
 ```python
-from silbidopy.render import getSpectrogram 
+from silbidopy.render import getSpectrogram
 import wavio
 
 wav_data = wavio.read('wav-file.wav')
