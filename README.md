@@ -1,11 +1,13 @@
 # silbidopy
-*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows for both automatic- and expert-generated tonal annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering annotations.
+*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that has abilities for both automatic- and expert-generated tonal
+annotations to be exported in a binary format. This repository contains a Python package that allows these binary files to be read into
+Python and also for Python to generate these binary files. Also, there is functionality for rendering annotations and for loading audio and annotations as a PyTorch datset.
 
 # Files
 - README.md | text | information about this repository
 - silbidopy | folder | the Python package
    - \_\_init\_\_.py | python | boiler plate to create a package.
-- data.py | python | code to load spectrograms & annotations as a PyTorch dataset.
+   - data.py | python | code to load spectrograms & annotations as a PyTorch dataset.
    - readBinaries.py | python | code to read *silbido* files
    - render.py | python | code to render *silbido* annotations
    - sigproc.py | python | helper functions for signal processing
@@ -68,7 +70,7 @@ writeTimeFrequencyBinary("trimmed-annotations.ann", trimmed_contours)
 
 ## Displaying Spectrograms & Annotations
 There are two functions in `render` for making displays.
-These require [NumPy](https://pypi.org/project/numpy/) and and [wavio](https://pypi.org/project/wavio/).
+These require [NumPy](https://pypi.org/project/numpy/) and [wavio](https://pypi.org/project/wavio/).
 
 To generate a spectrogram, use `render.getSpectrogram`.
 This requires either the name of an audio file or a `wavio.Wav` object.
@@ -118,3 +120,44 @@ print(mask.shape)
 
 To view the spectrogram or the annotation mask, [matplotlib](https://pypi.org/project/matplotlib/) could be used,
 for example with `pyplot.imshow`.
+
+## PyTorch Dataset
+A spectrogram could be used as an input to a neural network and the ground truth, in a task similar to segmentation,
+could be the corresponding annotation mask. `data` contains a PyTorch dataset class that can be used with the Pytorch DataLoader
+to load in such spectrogram-annotation-mask pairs.
+This requires [PyTorch](https://pypi.org/project/torch/), [NumPy](https://pypi.org/project/numpy/), and [wavio](https://pypi.org/project/wavio/).
+
+`data.AudioTonalDataset` works by reading from the audio and annotation files as needed, dynamically generating the spectrograms
+and annotation masks as they are requested. Hence, the dataset requires constant access to specified wav and binary-annotation files.
+
+```python
+from silbidopy.data import AudioTonalDataset
+from torch.utils.data import DataLoader
+
+# Create a dataset that will dynamically load spectrograms and annotation masks
+dataset = AudioTonalDataset(
+ "path-to-folder-with-audio-files",
+ "path-to-folder-with-annotation-files",
+ ... # any spectrogram paremeters
+)
+
+# Access an item
+# This creates the spectrogram and mask
+spectrogram, mask = dataset[777]
+```
+
+A `data.AudioTonalDataset` is typically not balanced because there are usually more examples without tonal energy.
+There is a method to generate a new dataset that will have an even number of data that have annotations with at least some tonal
+energy, `get_balanced_dataset`.
+
+```python
+# Basic dataset
+dataset = AudioTonalDataset(...)
+
+# Get a new dataset wherein 55% of the indices will correspond to
+# a spectrogram with some tonal energy
+dataset = dataset.get_balanced_dataset(positive_proportion = 0.55)
+``
+
+
+
