@@ -1,5 +1,5 @@
 # silbidopy
-*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows for both automatic- and expert-generated tonal annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering the loaded annotations.
+*[silbido](https://github.com/MarineBioAcousticsRC/silbido)* is a MATLAB tool that allows for both automatic- and expert-generated tonal annotations that are exported in a binary format. This repository contains a Python package that allows these binary files to be read into Python and also for Python to generate these binary files. Also, there is functionality for rendering annotations.
 
 # Files
 - README.md | text | information about this repository
@@ -11,7 +11,7 @@
    - writeBinaries.py | python | code to write *silbido* files
 
 # Use
-The package has two files that can be imported directly into Ptyhon code, **readBinaries.py** has code to read the *silbido* format and **writeBinaries.py** has code to write binary files in the *silbido* format.
+The package has two files that can be imported directly into Ptyhon code, `readBinaries` has code to read the *silbido* format and `writeBinaries` has code to write binary files in the *silbido* format.
 
 ## Reading files
 The follow code snippet loads the annotations from a *silbido* annotation file as an array containing the time-frequency information for each labeled tonal.
@@ -64,3 +64,56 @@ trimmed_contours = contours[:3]
 # Write these three tonals to a new annotation file
 writeTimeFrequencyBinary("trimmed-annotations.ann", trimmed_contours)
 ```
+
+## Displaying Spectrograms & Annotations
+There are two functions in `render` for making displays.
+These require [NumPy](https://pypi.org/project/numpy/) and and [wavio](https://pypi.org/project/wavio/).
+
+To generate a spectrogram, use `render.getSpectrogram`.
+This requires either the name of an audio file or a `wavio.Wav` object.
+The function also accepts many optional parameters to specify how the spectrogram will be generated.
+The output is a two-dimensional numpy array and each entry is a magnitude corresponding to a time and frequency,
+where frequency varies along axis 0 and time varies along axis 1.
+There is also a second value returned, which gives the actual length,
+in miliseconds, that the spectrogram covers, which will always match the input end_time unless the end time
+is after the file ends.
+This can help with generating a corresponding annotation mask.
+
+Here is an example program that generates a spectrogram:
+```python
+from silbidopy.render import getSpectrogram 
+import wavio
+
+wav_data = wavio.read('wav-file.wav')
+ 
+spectrogram, _ = getSpectrogram(wav_data, start_time = 0, end_time = 8000)
+
+print(spectrogram.shape)
+# Output: (360, 4000)
+```
+
+To generate an annotation mask, use `render.getAnnotationMask`.
+This requires a list of annotations such as is returned by `readBinaries.tonalReader.getTimeFrequencyContours`.
+The output is a two-dimensional numpy array and each entry is either 1, meaning that there is tonal energy, or 0,
+meaning that there is no tonal energy, corresponding to a time and frequency.
+The frequency varies along axis 0 and time varies along axis 1.
+
+Given analogous arguments, `render.getAnnotationMask` will generate a mask wherein each entry directly corresponds
+to a spectrogram generated a `render.getSpectrogram`.
+
+Here is an example of a program that generates a mask that corresponds directly to the spectrogram generated above:
+```python
+from silbidopy.readBinaries import tonalReader
+from silbidopy.render import getAnnotationMask
+
+# Get annotations that go with wave-file.wav
+contours = tonalReader("wav-file-annotations.bin")
+
+mask = getAnnotation(contours, start_time = 0, end_time = 8000)
+
+print(mask.shape)
+# Output: (360, 4000)
+```
+
+To view the spectrogram or the annotation mask, [matplotlib](https://pypi.org/project/matplotlib/) could be used,
+for example with `pyplot.imshow`.
