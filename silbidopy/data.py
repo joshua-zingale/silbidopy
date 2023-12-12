@@ -35,7 +35,6 @@ class AudioTonalDataset(Dataset):
         :param time_patch_advance: the number of time frames between successive patches.                                   Defaults to time_patch_frames (also when argument set to None)
         :param freq_patch_frames: the number of frequency frames per ouput datum, i.e. the number per patch.
         :param freq_patch_advance: the number offrequency frames between successive patches.                                   Defaults to freq_patch_frames (also when argument set to None)
-
         :param cache_wavs: If True, all wav files are saved in memory;
                            else, each datum access opens and closes a
                            wav file.
@@ -45,8 +44,6 @@ class AudioTonalDataset(Dataset):
                                   WARNING: setting to false leads to
                                   a significant slowdown.
 
-        :returns: A tuple with both the spectrogram and the time at which the
-                    spectrogram ended in ms: (spectogram, end_time)
         '''
        
         ## COLLECT AUDIO AND ANNOTATIONS ##
