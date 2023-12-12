@@ -13,7 +13,7 @@ class AudioTonalDataset(Dataset):
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True):
         '''
-        A Dataset that pulls spectrogram's and tonal annotations from audio and annotation
+        A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
         The dimensionality for each patch is (freq_patch_frames, time_patch_frames). The patches may overlap depending
         on the time and frequency patch advance parameters. Each datum's corresponding label is an array of equal size
