@@ -9,7 +9,7 @@ import os
 class AudioTonalDataset(Dataset):
     def __init__(self, audio_dir, annotation_dir, frame_time_span = 8, step_time_span = 2,
                  spec_clip_min = 0, spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
-                 time_patch_frames = 64, freq_patch_frames = 64, time_patch_advance = None,
+                 time_patch_frames = 50, freq_patch_frames = 50, time_patch_advance = None,
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True):
         '''
@@ -107,6 +107,7 @@ class AudioTonalDataset(Dataset):
             self.num_patches.append(num_freq_divisions * num_time_divisions)
 
             self.file_info.append({
+                "audio_file": anno_wav_files[i],
                 "num_time_divisions": num_time_divisions,
                 })
             if cache_wavs:
@@ -196,6 +197,33 @@ class AudioTonalDataset(Dataset):
                             positive_set.add(idx)
 
         return positive_set
+    
+    def get_index_source(self, idx):
+        ''' Finds the source audio file and timestamp for an index
+        in this dataset. Returns a three item tuple,
+        (file_name: str, start_time: float, start_frequency: float)'''
+        
+        ## Determine which file corresponds to idx ##
+        if idx >= len(self):
+            raise IndexError("Dataset index out of bounds.")
+        patches_cumsum = np.cumsum(self.num_patches)
+        file_idx = np.argmax(patches_cumsum > idx)
+
+        audio_file = self.file_info[file_idx]["audio_file"] 
+
+        # Adjust idx to be relative to the file index
+        if file_idx != 0:
+            idx -= patches_cumsum[file_idx - 1]
+        
+        # get starting time and frequency
+        num_time_divisions = self.file_info[file_idx]["num_time_divisions"]
+        start_time = (idx % num_time_divisions) * self.time_patch_advance_ms
+        start_freq = (idx // num_time_divisions) * self.freq_patch_advance_hz + self.min_freq
+
+        return audio_file, start_time, start_freq
+
+
+
 
     def __len__(self):
         return sum(self.num_patches)
@@ -299,7 +327,14 @@ class BalancedDataset(Dataset):
         np.random.shuffle(self.indices)
 
         self.dataset = dataset
-    
+
+
+    def get_index_source(self, idx):
+        ''' Finds the source audio file and timestamp for an index
+        in this dataset. Returns a three item tuple,
+        (file_name: str, start_time: float, start_frequency: float)'''
+        return self.dataset.get_index_source(self.indices[idx])
+
     def __len__(self):
         return len(self.indices)
 
