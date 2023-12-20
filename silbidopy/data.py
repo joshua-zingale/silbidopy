@@ -4,6 +4,7 @@ from torch.utils.data import Dataset, IterableDataset
 import numpy as np
 import fnmatch
 import wavio
+import h5py
 import os
 
 class AudioTonalDataset(Dataset):
@@ -310,14 +311,21 @@ class BalancedDataset(Dataset):
         # Get number of positive and negative indices to be included
         init_len_p = len(positive_indices)
         init_len_n = len(negative_indices)
-
-        len_p = int(min(
-                init_len_p,
-                positive_proportion * init_len_n / (1-positive_proportion)
-                ))
-        len_n = int(
-                (1 - positive_proportion) * len_p / positive_proportion
-                )
+        
+        if positive_proportion == 1:
+            len_p = init_len_p
+            len_n = 0
+        else if positive_proportion == 0:
+            len_p = 0
+            len_n = init_len_n
+        else:
+            len_p = int(min(
+                    init_len_p,
+                    positive_proportion * init_len_n / (1-positive_proportion)
+                    ))
+            len_n = int(
+                    (1 - positive_proportion) * len_p / positive_proportion
+                    )
 
         positive_indices = positive_indices[:len_p]
         negative_indices = negative_indices[:len_n]
@@ -341,6 +349,51 @@ class BalancedDataset(Dataset):
     def __getitem__(self, idx):
         return self.dataset.__getitem__(self.indices[idx])
 
+class Hdf5Dataset(Dataset):
+
+    def __init__(self, hdf5_file, data_name = "data", labels_name = "labels"):
+        '''A map-style PyTorch Dataset that loads data and labels
+        from an hdf5file.
+        
+        :param hdf5_file: the name of the hdf5 file that will be loaded
+                          by this Dataset
+        :param data_name: the name of the dataset inside the hdf5 file that
+                          stores the inputs
+        :param labels_name: the name of the dataset inside the hdf5 file that
+                            stores the output, or labels, that correspond
+                            the the data inputs'''
+        
+        self.file = h5py.File(hdf5_file, 'r')
+        self.data_name = data_name
+        self.labels_name = labels_name
+    
+    def __len__(self):
+        return self.file[self.data_name].shape[0]
+
+    def __getitem__(self, idx):
+        return (self.file[self.data_name][idx],
+                self.file[self.labels_name][idx])
+
+def dataset_to_hdf5(dataset, filename):
+    '''Given a map-style PyTorch dataset, returns an hdf5 file
+    named and at filename'''
+    
+    length = len(dataset)
+    datum1, label1 = dataset[0]
+
+    h5 = h5py.File(filename, 'w')
+    
+
+    h5.create_dataset("data", (length,) + datum1.shape, dtype='float32')
+    h5.create_dataset("labels", (length,) + label1.shape, dtype='float32')
+
+    for i in range(length):
+        datum, label = dataset[i]
+
+        h5["data"][i] = datum
+        h5["labels"][i] = label
+
+    h5.close()
 
 
 class BalancedIterableDataset(IterableDataset):
