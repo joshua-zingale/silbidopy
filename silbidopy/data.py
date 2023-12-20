@@ -12,7 +12,7 @@ class AudioTonalDataset(Dataset):
                  spec_clip_min = 0, spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
                  time_patch_frames = 50, freq_patch_frames = 50, time_patch_advance = None,
                  freq_patch_advance = None, cache_wavs = True,
-                 cache_annotations = True):
+                 cache_annotations = True, line_thickness = 1):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -36,14 +36,16 @@ class AudioTonalDataset(Dataset):
         :param time_patch_advance: the number of time frames between successive patches.                                   Defaults to time_patch_frames (also when argument set to None)
         :param freq_patch_frames: the number of frequency frames per ouput datum, i.e. the number per patch.
         :param freq_patch_advance: the number offrequency frames between successive patches.                                   Defaults to freq_patch_frames (also when argument set to None)
-        :param cache_wavs: If True, all wav files are saved in memory;
+        :param cache_wavs: if True, all wav files are saved in memory;
                            else, each datum access opens and closes a
                            wav file.
-        :param cache_annotations: If True, all annotations are saved
+        :param cache_annotations: if True, all annotations are saved
                                   in memory; else, each datum access
                                   loads the relevant annotations.
                                   WARNING: setting to false leads to
                                   a significant slowdown.
+        :param line_thickness: the number of pixels, i.e. frequency
+                                     bins, tall that the annotations will be
 
         '''
        
@@ -91,6 +93,8 @@ class AudioTonalDataset(Dataset):
 
         self.bin_files = bin_files
         self.anno_wav_files = anno_wav_files
+
+        self.line_thickness = line_thickness
 
         # Get length of dataset
         self.num_patches = []
@@ -275,7 +279,8 @@ class AudioTonalDataset(Dataset):
                 frame_time_span = self.frame_time_span,
                 step_time_span = self.step_time_span,
                 min_freq = start_freq, max_freq = end_freq,
-                start_time = start_time, end_time = end_time)
+                start_time = start_time, end_time = end_time,
+                line_thickness = self.line_thickness)
 
         return datum, label
 
@@ -315,7 +320,7 @@ class BalancedDataset(Dataset):
         if positive_proportion == 1:
             len_p = init_len_p
             len_n = 0
-        else if positive_proportion == 0:
+        elif positive_proportion == 0:
             len_p = 0
             len_n = init_len_n
         else:
