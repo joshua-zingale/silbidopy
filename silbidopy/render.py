@@ -33,11 +33,10 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
         wav_data = audioFile
     else:
         wav_data = wavio.read(audioFile)
-
-    # I copy this from Pu Li's DeepWhistle implementation
-    # in wav2spec.py. I do not know why it is necessary
+    
+    # Rescale data if sample width is > 2
     if wav_data.sampwidth > 2:
-            wav_data.sampwidth /= 2 ** (8 * (wav_data.sampwidth - 2))
+            wav_data.data //= 2 ** (8 * (wav_data.sampwidth - 2))
 
     # #
     # Split the wave signal into overlapping frames
