@@ -125,7 +125,7 @@ for example with `pyplot.imshow`.
 A spectrogram could be used as an input to a neural network and the ground truth, in a task similar to segmentation,
 could be the corresponding annotation mask. `data` contains a PyTorch dataset class that can be used with the Pytorch DataLoader
 to load in such spectrogram-annotation-mask pairs.
-This requires [PyTorch](https://pypi.org/project/torch/), [NumPy](https://pypi.org/project/numpy/), and [wavio](https://pypi.org/project/wavio/).
+Importing `data` requires [h5py](https://pypi.org/project/h5py/), [NumPy](https://pypi.org/project/numpy/), [PyTorch](https://pypi.org/project/torch/), and [wavio](https://pypi.org/project/wavio/).
 
 `data.AudioTonalDataset` works by reading from the audio and annotation files as needed, dynamically generating the spectrograms
 and annotation masks as they are requested. Hence, the dataset requires constant access to specified wav and binary-annotation files.
@@ -151,13 +151,34 @@ There is a method to generate a new dataset that will have an even number of dat
 energy, `get_balanced_dataset`.
 
 ```python
+from silbidopy.data import AudioTonalDataset
+
 # Basic dataset
 dataset = AudioTonalDataset(...)
 
 # Get a new dataset wherein 55% of the indices will correspond to
 # a spectrogram with some tonal energy
 dataset = dataset.get_balanced_dataset(positive_proportion = 0.55)
-``
+```
 
+A `data.AudioTonalDataset` has a sizeable overhead when loading data because the spectrograms and annotation masks are dynamically created for each datum load.
+Therefore, for a big speed increase in datum load time, the function `data.dataset_to_hdf5` may be used to export a `data.AudioTonalDataset` to an hdf5 file.
+There is also another dataset, `data.Hdf5Dataset`, which may accesses an hdf5 file to serve data.
 
+```python
+from silbidopy.data import (
+ AudioTonalDataset,
+ dataset_to_hdf5,
+ Hdf5Dataset)
+ 
+
+# Basic dataset
+dataset = AudioTonalDataset(...)
+
+# Save dynamic dataset to static hdf5 file
+dataset_to_hdf5(dataset, "static.hdf5")
+
+# Create dataset from the hdf5 file
+h5_dataset = Hdf5Dataset("static.hdf5")
+```
 
