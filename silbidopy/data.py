@@ -13,7 +13,8 @@ class AudioTonalDataset(Dataset):
                  spec_clip_min = 0, spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
                  time_patch_frames = 50, freq_patch_frames = 50, time_patch_advance = None,
                  freq_patch_advance = None, cache_wavs = True,
-                 cache_annotations = True, line_thickness = 1):
+                 cache_annotations = True, line_thickness = 1,
+                 annotation_extension = "bin"):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -46,8 +47,9 @@ class AudioTonalDataset(Dataset):
                                   WARNING: setting to false leads to
                                   a significant slowdown.
         :param line_thickness: the number of pixels, i.e. frequency
-                                     bins, tall that the annotations will be
-
+                                     bins, tall that the annotations will be.
+        :param annotation_extension: the file extension used for the binary
+                                        annotation files.
         '''
        
         ## COLLECT AUDIO AND ANNOTATIONS ##
@@ -61,7 +63,7 @@ class AudioTonalDataset(Dataset):
         wav_file_dict = {wav_names[i] : wav_files[i] for i in range(len(wav_names))}
         
         # Get all annotation file paths
-        bin_files = findfiles(annotation_dir, "*.bin")
+        bin_files = findfiles(annotation_dir, f"*.{annotation_extension}")
 
         # find all .wav with corresponding .bin
         anno_wav_filenames = list(map(bin2wav_filename, bin_files))
