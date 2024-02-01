@@ -1,6 +1,7 @@
 from silbidopy.render import getSpectrogram, getAnnotationMask
 from silbidopy.readBinaries import tonalReader
 from torch.utils.data import Dataset, IterableDataset
+from math import floor
 import numpy as np
 import fnmatch
 import wavio
@@ -103,11 +104,17 @@ class AudioTonalDataset(Dataset):
             num_samples = wav_file.data.shape[0]
 
             file_length_ms = num_samples * 1000 / wav_file.rate
+            
+            # Check that the file has a high enough sample rate
+            # if not, skip file
+            if wav_file.rate / 2 < max_freq:
+                continue
 
             # determine & append number of patches in file
-            num_freq_divisions = int((max_freq - self.freq_patch_length_hz) / self.freq_patch_advance_hz)
+            num_freq_divisions = floor((max_freq - min_freq - self.freq_patch_length_hz)/ self.freq_patch_advance_hz) + 1
+            
 
-            num_time_divisions = int((file_length_ms - self.time_patch_length_ms - frame_time_span) / self.time_patch_advance_ms)
+            num_time_divisions = floor((file_length_ms - self.time_patch_length_ms - frame_time_span) / self.time_patch_advance_ms) + 1
 
             self.num_patches.append(num_freq_divisions * num_time_divisions)
 

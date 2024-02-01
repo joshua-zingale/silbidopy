@@ -11,7 +11,7 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     Gets and returns a two-dimensional list in which the values encode a spectrogram.
 
     :param audioFile: the audio file in .wav format for which a spectrogram is generated.
-                      This may either be an audio file of time wavio.Wav or a file name
+                      This may either be an audio file of type wavio.Wav or a file name
     :param frame_time_span: ms, length of time for one time window for dft
     :param step_time_span: ms, length of time step for spectrogram
     :param spec_clip_min: log magnitude spectrogram min-max normalization, minimum value
