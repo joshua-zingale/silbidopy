@@ -14,7 +14,7 @@ class AudioTonalDataset(Dataset):
                  time_patch_frames = 50, freq_patch_frames = 50, time_patch_advance = None,
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True, line_thickness = 1,
-                 annotation_extension = "bin"):
+                 annotation_extension = "bin", window_fn = None):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -25,9 +25,9 @@ class AudioTonalDataset(Dataset):
 
         :param audio_dir: the file path where the audio files are stored
         :param annotation_dir: the file path where the annotation files corresponding to
-                                    the audio files are stored. For each annotation file,
-                                    there must be a corresponding audio file with the same
-                                    name but with a different extension, namely .wav 
+            the audio files are stored. For each annotation file,
+            there must be a corresponding audio file with the same
+            name but with a different extension, namely .wav 
         :param frame_time_span: ms, length of time for one time window for dft
         :param step_time_span: ms, length of time step for spectrogram
         :param spec_clip_min: log magnitude spectrogram min-max normalization, minimum value
@@ -35,21 +35,27 @@ class AudioTonalDataset(Dataset):
         :param min_freq: Hz, lower bound of frequency for spectrogram
         :param max_freq: Hz, upper bound of frequency for spectrogram
         :param time_patch_frames: the number of time frames per ouput datum, i.e. the number per patch.
-        :param time_patch_advance: the number of time frames between successive patches.                                   Defaults to time_patch_frames (also when argument set to None)
+        :param time_patch_advance: the number of time frames between successive patches.
+            Defaults to time_patch_frames (also when argument set to None)
         :param freq_patch_frames: the number of frequency frames per ouput datum, i.e. the number per patch.
-        :param freq_patch_advance: the number offrequency frames between successive patches.                                   Defaults to freq_patch_frames (also when argument set to None)
+        :param freq_patch_advance: the number of frequency frames between successive patches.
+            Defaults to freq_patch_frames (also when argument set to None)
         :param cache_wavs: if True, all wav files are saved in memory;
-                           else, each datum access opens and closes a
-                           wav file.
+            else, each datum access opens and closes a
+            wav file.
         :param cache_annotations: if True, all annotations are saved
-                                  in memory; else, each datum access
-                                  loads the relevant annotations.
-                                  WARNING: setting to false leads to
-                                  a significant slowdown.
+            in memory; else, each datum access
+            loads the relevant annotations.
+            WARNING: setting to false leads to
+            a significant slowdown.
         :param line_thickness: the number of pixels, i.e. frequency
-                                     bins, tall that the annotations will be.
+            bins, tall that the annotations will be.
         :param annotation_extension: the file extension used for the binary
-                                        annotation files.
+            annotation files.
+        :param window_fn: the function that generates a processing map for each frame
+            before the the frames are used in the spectrogram. The function must receive
+            one positional argument, n, and then return an array of length n.
+            For example, window_fn(5) could return [0.1,0.2,0.4,0.2,0.1]
         '''
        
         ## COLLECT AUDIO AND ANNOTATIONS ##
@@ -98,6 +104,8 @@ class AudioTonalDataset(Dataset):
         self.anno_wav_files = anno_wav_files
 
         self.line_thickness = line_thickness
+        
+        self.window_fn = window_fn
 
         # Get length of dataset
         self.num_patches = []
@@ -275,7 +283,8 @@ class AudioTonalDataset(Dataset):
                 spec_clip_min = self.spec_clip_min,
                 spec_clip_max = self.spec_clip_max,
                 min_freq = start_freq, max_freq = end_freq,
-                start_time = start_time, end_time = end_time)
+                start_time = start_time, end_time = end_time,
+                window_fn = self.window_fn)
         
         # get contours
         contours = None

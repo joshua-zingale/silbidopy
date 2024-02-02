@@ -6,12 +6,12 @@ from math import ceil
 
 def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip_min = 0,
                    spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
-                   start_time = 0, end_time=-1):
+                   start_time = 0, end_time=-1, window_fn = None):
     '''
     Gets and returns a two-dimensional list in which the values encode a spectrogram.
 
     :param audioFile: the audio file in .wav format for which a spectrogram is generated.
-                      This may either be an audio file of type wavio.Wav or a file name
+        This may either be an audio file of type wavio.Wav or a file name
     :param frame_time_span: ms, length of time for one time window for dft
     :param step_time_span: ms, length of time step for spectrogram
     :param spec_clip_min: log magnitude spectrogram min-max normalization, minimum value
@@ -20,10 +20,13 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     :param max_freq: Hz, upper bound of frequency for spectrogram
     :param start_time: ms, the beginning of where the audioFile is read
     :param end_time: ms, the end of where the audioFile is read. If end > the length of
-                     of the file, then the file is read only to its end.
-
+        of the file, then the file is read only to its end.
+    :param window_fn: the function that generates a processing map for each frame
+        before the the frames are used in the spectrogram. The function must receive
+        one positional argument, n, and then return an array of length n.
+        For example, window_fn(5) could return [0.1,0.2,0.4,0.2,0.1]
     :returns: A tuple with both the spectrogram and the time at which the
-              spectrogram ended in ms: (spectogram, end_time)
+        spectrogram ended in ms: (spectogram, end_time)
     '''
 
     freq_resolution = 1000 / frame_time_span
@@ -53,6 +56,9 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     else:
         frames = frame_signal(wav_data.data.ravel()[start_frame:end_frame], frame_sample_span, step_sample_span)
     
+    if window_fn != None:
+       frames = frames * window_fn(frames.shape[1]) 
+
     # #
     # Make spectrogram
     # #
