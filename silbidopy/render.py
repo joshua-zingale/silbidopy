@@ -53,6 +53,7 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     # No frames if the audio file is too short
     if wav_data.data[start_frame:end_frame].shape[0] < frame_sample_span:
         frames = []
+        return np.array([[]], dtype=float), start_time
     else:
         frames = frame_signal(wav_data.data.ravel()[start_frame:end_frame], frame_sample_span, step_sample_span)
     
