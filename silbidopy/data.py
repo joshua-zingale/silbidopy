@@ -14,7 +14,8 @@ class AudioTonalDataset(Dataset):
                  time_patch_frames = 50, freq_patch_frames = 50, time_patch_advance = None,
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True, line_thickness = 1,
-                 annotation_extension = "bin", window_fn = None):
+                 annotation_extension = "bin", window_fn = None,
+                 post_processing_function = None):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -56,6 +57,11 @@ class AudioTonalDataset(Dataset):
             before the the frames are used in the spectrogram. The function must receive
             one positional argument, n, and then return an array of length n.
             For example, window_fn(5) could return [0.1,0.2,0.4,0.2,0.1]
+        :param post_processing_function: a function that further processes each spectrogram
+            after it is generated. The function  must accept one positional argument that
+            is a two-dimensional numpy array with floating point dtype and then return a same-sized
+            array. Each spectrogram, call it s, will be passed into this function, call it f,
+            before returning it, i.e. f(s) is returned for each spectrogram. 
         '''
        
         ## COLLECT AUDIO AND ANNOTATIONS ##
@@ -70,6 +76,10 @@ class AudioTonalDataset(Dataset):
         
         # Get all annotation file paths
         bin_files = findfiles(annotation_dir, f"*.{annotation_extension}")
+
+        ## TODO Remove any binary file for which the audio file does not have a high enough
+        # sample rate
+
 
         # find all .wav with corresponding .bin
         anno_wav_filenames = list(map(bin2wav_filename, bin_files))
@@ -107,6 +117,8 @@ class AudioTonalDataset(Dataset):
         
         self.window_fn = window_fn
 
+        self.post_processing_function = post_processing_function
+
         # Get length of dataset
         self.num_patches = []
         self.file_info = []
@@ -115,11 +127,6 @@ class AudioTonalDataset(Dataset):
 
             file_length_ms = num_samples * 1000 / wav_file.rate
             
-            # Check that the file has a high enough sample rate
-            # if not, skip file
-            if wav_file.rate / 2 < max_freq:
-                continue
-
             # determine & append number of patches in file
             num_freq_divisions = floor((max_freq - min_freq - self.freq_patch_length_hz)/ self.freq_patch_advance_hz) + 1
             
@@ -131,6 +138,7 @@ class AudioTonalDataset(Dataset):
             self.file_info.append({
                 "audio_file": anno_wav_files[i],
                 "num_time_divisions": num_time_divisions,
+                "num_freq_divisions": num_freq_divisions,
                 })
             if cache_wavs:
                 self.file_info[i]["wav_data"] = wav_file
@@ -201,6 +209,10 @@ class AudioTonalDataset(Dataset):
                     # seconds to miliseconds
                     time = time *1000
 
+                    # The highest frequency patch that is allowed given the min and max
+                    # frequencies
+                    max_freq_patch = self.file_info[file_idx]["num_freq_divisions"] - 1
+
                     # Each node can be in multiple patches
                     # Start with the highest frequency and time patch
                     freq_patch = ((freq - self.min_freq) / self.freq_patch_advance_hz)
@@ -212,7 +224,7 @@ class AudioTonalDataset(Dataset):
                     time_overlap = np.ceil(time_patch_range - time_patch % 1).astype(int)
                     
                     # Add indices to positive set
-                    for f_idx in range(int(freq_patch), max(int(freq_patch) - freq_overlap, -1), -1):
+                    for f_idx in range(min(int(freq_patch), max_freq_patch), max(int(freq_patch) - freq_overlap, -1), -1):
                         for t_idx in range(int(time_patch), max(int(time_patch) - time_overlap, -1), -1):
                             idx = t_idx + f_idx * num_time_divisions + patches_cumsum[file_idx]
                     
@@ -227,7 +239,7 @@ class AudioTonalDataset(Dataset):
         
         ## Determine which file corresponds to idx ##
         if idx >= len(self):
-            raise IndexError("Dataset index out of bounds.")
+            raise IndexError(f"Dataset index ({idx}) out of bounds for length ({len(self)}).")
         patches_cumsum = np.cumsum(self.num_patches)
         file_idx = np.argmax(patches_cumsum > idx)
 
@@ -253,7 +265,7 @@ class AudioTonalDataset(Dataset):
     def __getitem__(self, idx):
         ## Determine which file corresponds to idx ##
         if idx >= len(self):
-            raise IndexError("Dataset index out of bounds.")
+            raise IndexError(f"Dataset index ({idx}) out of bounds for length ({len(self)}).")
         patches_cumsum = np.cumsum(self.num_patches)
         file_idx = np.argmax(patches_cumsum > idx)
 
@@ -299,6 +311,10 @@ class AudioTonalDataset(Dataset):
                 min_freq = start_freq, max_freq = end_freq,
                 start_time = start_time, end_time = end_time,
                 line_thickness = self.line_thickness)
+       
+        # apply post processing function if one is to be used
+        if self.post_processing_function != None:
+            datum = self.post_processing_function(datum)
 
         return datum, label
 
