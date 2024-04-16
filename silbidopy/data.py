@@ -5,6 +5,7 @@ from math import floor
 import numpy as np
 import fnmatch
 import wavio
+import glob
 import h5py
 import os
 
@@ -15,7 +16,7 @@ class AudioTonalDataset(Dataset):
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True, line_thickness = 1,
                  annotation_extension = "bin", window_fn = None,
-                 post_processing_function = None):
+                 post_processing_function = None, mask_processing_function = None):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -62,12 +63,14 @@ class AudioTonalDataset(Dataset):
             is a two-dimensional numpy array with floating point dtype and then return a same-sized
             array. Each spectrogram, call it s, will be passed into this function, call it f,
             before returning it, i.e. f(s) is returned for each spectrogram. 
-        '''
+        :param mask_processing_function: a function that processes the tonal mask before returning
+            it. Must receive (anno, spec), two m by n NumPy array and then return an equally shaped
+            NumPy array, where anno is the annotation mask and spec is the coresponding spectrogram
+            '''
        
         ## COLLECT AUDIO AND ANNOTATIONS ##
         # colelct all .wav files
-        wav_files = findfiles(audio_dir, "*.wav")
-        
+        wav_files = findfiles(audio_dir, "wav")
         # collect all .wav filenames
         wav_names = list(map(os.path.basename, wav_files))
     
@@ -75,7 +78,7 @@ class AudioTonalDataset(Dataset):
         wav_file_dict = {wav_names[i] : wav_files[i] for i in range(len(wav_names))}
         
         # Get all annotation file paths
-        bin_files = findfiles(annotation_dir, f"*.{annotation_extension}")
+        bin_files = findfiles(annotation_dir, f"{annotation_extension}")
 
         ## TODO Remove any binary file for which the audio file does not have a high enough
         # sample rate
@@ -118,6 +121,7 @@ class AudioTonalDataset(Dataset):
         self.window_fn = window_fn
 
         self.post_processing_function = post_processing_function
+        self.mask_processing_function = mask_processing_function
 
         # Get length of dataset
         self.num_patches = []
@@ -127,8 +131,10 @@ class AudioTonalDataset(Dataset):
 
             file_length_ms = num_samples * 1000 / wav_file.rate
             
+            nyquist_freq = int(wav_file.rate / 2)
+
             # determine & append number of patches in file
-            num_freq_divisions = floor((max_freq - min_freq - self.freq_patch_length_hz)/ self.freq_patch_advance_hz) + 1
+            num_freq_divisions = floor(( min(max_freq, nyquist_freq) - min_freq - self.freq_patch_length_hz)/ self.freq_patch_advance_hz) + 1
             
 
             num_time_divisions = floor((file_length_ms - self.time_patch_length_ms - frame_time_span) / self.time_patch_advance_ms) + 1
@@ -311,11 +317,13 @@ class AudioTonalDataset(Dataset):
                 min_freq = start_freq, max_freq = end_freq,
                 start_time = start_time, end_time = end_time,
                 line_thickness = self.line_thickness)
+
        
         # apply post processing function if one is to be used
         if self.post_processing_function != None:
             datum = self.post_processing_function(datum)
-
+        if self.mask_processing_function != None:
+            label = self.mask_processing_function(label, datum)
         return datum, label
 
 class BalancedDataset(Dataset):
@@ -483,12 +491,10 @@ class BalancedIterableDataset(IterableDataset):
 
 ## HELPERS ##
 # find file  with certain pattern.
-def findfiles(path, fnmatchex='*.*'):
+def findfiles(path, extension):
     result = []
-    for root, dirs, files in os.walk(path):
-        for filename in fnmatch.filter(files, fnmatchex):
-            fullname = os.path.join(root, filename)
-            result.append(fullname)
+    for filepath in glob.iglob(f"{path}/**/*.{extension}", recursive = True):
+        result.append(filepath)
     return result
 
 # Substitue postfix .bin to .wav.
