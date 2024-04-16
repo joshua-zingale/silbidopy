@@ -421,9 +421,10 @@ class Hdf5Dataset(Dataset):
         return (self.file[self.data_name][idx],
                 self.file[self.labels_name][idx])
 
-def dataset_to_hdf5(dataset, filename):
+def dataset_to_hdf5(dataset, filename, transpose = False):
     '''Given a map-style PyTorch dataset, returns an hdf5 file
-    named and at filename'''
+    named and at filename. If transpose is set to True, a transpose is
+    applied to each label and datum.'''
     
     length = len(dataset)
     datum1, label1 = dataset[0]
@@ -434,11 +435,18 @@ def dataset_to_hdf5(dataset, filename):
     h5.create_dataset("data", (length,) + datum1.shape, dtype='float32')
     h5.create_dataset("labels", (length,) + label1.shape, dtype='float32')
 
-    for i in range(length):
-        datum, label = dataset[i]
+    if transpose:
+        for i in range(length):
+            datum, label = dataset[i]
 
-        h5["data"][i] = datum
-        h5["labels"][i] = label
+            h5["data"][i] = datum.T
+            h5["labels"][i] = label.T
+    else:
+        for i in range(length):
+            datum, label = dataset[i]
+
+            h5["data"][i] = datum
+            h5["labels"][i] = label
 
     h5.close()
 
