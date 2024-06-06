@@ -16,7 +16,9 @@ class AudioTonalDataset(Dataset):
                  freq_patch_advance = None, cache_wavs = True,
                  cache_annotations = True, line_thickness = 1,
                  annotation_extension = "bin", window_fn = None,
-                 post_processing_function = None, mask_processing_function = None):
+                 post_processing_function = None, mask_processing_function = None,
+                 post_processing_time_patch_padding = 0, post_process_full_frequency_range = False
+                 ):
         '''
         A Dataset that pulls spectrograms and tonal annotations from audio and annotation
         files respectively. Each datum is one patch from one spectrogram representation of one of the audio files.
@@ -66,8 +68,14 @@ class AudioTonalDataset(Dataset):
         :param mask_processing_function: a function that processes the tonal mask before returning
             it. Must receive (anno, spec), two m by n NumPy array and then return an equally shaped
             NumPy array, where anno is the annotation mask and spec is the coresponding spectrogram
+        :param post_processing_time_patch_padding: The number of time frames of padding used
+            when post prossesing the spectrogram. After post prosessing, the size is shrunk to
+            the size specified by time_patch_frames. 
+        :param post_process_full_frequency_range: If true, uses the entire frequency range when
+            calculating post_processing_function for each spectrogram. After post_processing, the
+            size is shrunk to the size specified by freq_patch_frames.
             '''
-       
+
         ## COLLECT AUDIO AND ANNOTATIONS ##
         # colelct all .wav files
         wav_files = findfiles(audio_dir, "wav")
@@ -122,6 +130,9 @@ class AudioTonalDataset(Dataset):
 
         self.post_processing_function = post_processing_function
         self.mask_processing_function = mask_processing_function
+        self.post_processing_time_patch_padding = post_processing_time_patch_padding
+        self.full_freq = post_process_full_frequency_range
+        self.freq_resolution = freq_resolution
 
         # Get length of dataset
         self.num_patches = []
@@ -233,8 +244,10 @@ class AudioTonalDataset(Dataset):
                     for f_idx in range(min(int(freq_patch), max_freq_patch), max(int(freq_patch) - freq_overlap, -1), -1):
                         for t_idx in range(int(time_patch), max(int(time_patch) - time_overlap, -1), -1):
                             idx = t_idx + f_idx * num_time_divisions + patches_cumsum[file_idx]
-                    
-                            positive_set.add(idx)
+
+                            # Something in my logic does not handle the case when idx == len(dataset). This is a check to avoid that from happening
+                            if idx < len(self):
+                                positive_set.add(idx)
 
         return positive_set
     
@@ -262,9 +275,6 @@ class AudioTonalDataset(Dataset):
 
         return audio_file, start_time, start_freq
 
-
-
-
     def __len__(self):
         return sum(self.num_patches)
 
@@ -286,6 +296,10 @@ class AudioTonalDataset(Dataset):
 
         end_time = start_time + self.time_patch_length_ms
         end_freq = start_freq + self.freq_patch_length_hz
+
+        # padding for post-processing function
+        padded_start_time = max(start_time - self.post_processing_time_patch_padding * self.step_time_span, 0)
+        padded_end_time = end_time + self.post_processing_time_patch_padding * self.step_time_span
        
         # get wav file
         wav_data = None
@@ -295,13 +309,14 @@ class AudioTonalDataset(Dataset):
             wav_data = wavio.read(self.anno_wav_files[file_idx])
 
         # get datum (spectrogram) and label
-        datum, _ = getSpectrogram(wav_data,
+        datum, actual_end_time = getSpectrogram(wav_data,
                 frame_time_span = self.frame_time_span,
                 step_time_span = self.step_time_span,
                 spec_clip_min = self.spec_clip_min,
                 spec_clip_max = self.spec_clip_max,
-                min_freq = start_freq, max_freq = end_freq,
-                start_time = start_time, end_time = end_time,
+                min_freq = self.min_freq if self.full_freq else start_freq,
+                max_freq = self.max_freq if self.full_freq else end_freq,
+                start_time = padded_start_time, end_time = padded_end_time,
                 window_fn = self.window_fn)
         
         # get contours
@@ -314,8 +329,9 @@ class AudioTonalDataset(Dataset):
         label = getAnnotationMask(contours,
                 frame_time_span = self.frame_time_span,
                 step_time_span = self.step_time_span,
-                min_freq = start_freq, max_freq = end_freq,
-                start_time = start_time, end_time = end_time,
+                min_freq = self.min_freq if self.full_freq else start_freq,
+                max_freq = self.max_freq if self.full_freq else end_freq,
+                start_time = padded_start_time, end_time = actual_end_time,
                 line_thickness = self.line_thickness)
 
        
@@ -324,6 +340,21 @@ class AudioTonalDataset(Dataset):
             datum = self.post_processing_function(datum)
         if self.mask_processing_function != None:
             label = self.mask_processing_function(label, datum)
+        
+        # Remove padding added for the post processing function
+        left_time_padding = (start_time - padded_start_time)/self.step_time_span
+        leftover = left_time_padding % 1
+        left_time_padding = int(left_time_padding)
+        right_time_padding = int((actual_end_time - end_time)/self.step_time_span + leftover)
+
+        lower_freq_padding = (self.max_freq - end_freq) / self.freq_resolution if self.full_freq else 0
+        leftover = lower_freq_padding % 1
+        lower_freq_padding = int(lower_freq_padding)
+        upper_freq_padding = int((start_freq - self.min_freq) / self.freq_resolution + leftover) if self.full_freq else 0
+
+        datum = datum[lower_freq_padding: datum.shape[0] - upper_freq_padding, left_time_padding:datum.shape[1] - right_time_padding]
+        label = label[lower_freq_padding: label.shape[0] - upper_freq_padding, left_time_padding:label.shape[1] - right_time_padding]
+
         return datum, label
 
 class BalancedDataset(Dataset):
@@ -432,8 +463,8 @@ def dataset_to_hdf5(dataset, filename, transpose = False):
     h5 = h5py.File(filename, 'w')
     
 
-    h5.create_dataset("data", (length,) + datum1.shape, dtype='float32')
-    h5.create_dataset("labels", (length,) + label1.shape, dtype='float32')
+    h5.create_dataset("data", (length,) + datum1.shape, dtype='float32', chunks = (1,) + datum1.shape)
+    h5.create_dataset("labels", (length,) + label1.shape, dtype='float32', chunks = (1,) + label1.shape)
 
     if transpose:
         for i in range(length):
