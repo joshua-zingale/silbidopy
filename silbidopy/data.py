@@ -162,7 +162,7 @@ class AudioTonalDataset(Dataset):
             if cache_annotations:
                 self.file_info[i]["contours"] =  tonalReader(self.bin_files[i]).getTimeFrequencyContours()
     
-    def get_balanced_dataset(self, positive_proportion = 0.5):
+    def get_balanced_dataset(self, positive_proportion = 0.5, seed = None):
         '''
         Builds a new dataset that wraps around the current one. The new
         dataset will include entries of the current dataset
@@ -173,14 +173,15 @@ class AudioTonalDataset(Dataset):
         existence to function.
 
         :param positive_proportion: the proportion of entries that will
-                                    be positive in the new dataset.
-                                    Setting this to 0.5 results in a
-                                    balanced dataset
+            be positive in the new dataset.
+            Setting this to 0.5 results in a
+            balanced dataset
+        :param seed: if not None, seeds to creation of the BalancedDataset with this integer value
 
         :returns: the newly balanced dataset
         '''
         return BalancedDataset(self, self.get_positive_indices(),
-                positive_proportion = positive_proportion)
+                positive_proportion = positive_proportion, seed = seed)
 
     def get_balanced_iterable(self, epoch_size = None):
         '''
@@ -205,7 +206,8 @@ class AudioTonalDataset(Dataset):
         # Get the possible number of patches that could overlap with a node
         freq_patch_range = self.freq_patch_length_hz / self.freq_patch_advance_hz
         time_patch_range = self.time_patch_length_ms / self.time_patch_advance_ms
-        
+       
+        # Set up an array to find out how many file patches were used before each file
         patches_cumsum = np.cumsum(np.append([0], self.num_patches))
         positive_set = set()
        
@@ -218,6 +220,10 @@ class AudioTonalDataset(Dataset):
                 contours = tonalReader(self.bin_files[file_idx]).getTimeFrequencyContours()
 
             num_time_divisions = self.file_info[file_idx]["num_time_divisions"]
+
+            # Mutliple tonals may be in the same t-f patch
+            # As we are keeping sets of tonal patches, adding the same patch
+            # a second time will not affect the set.
             for contour in contours:
                 for time, freq in contour:
                     # skip out of range nodes
@@ -225,6 +231,8 @@ class AudioTonalDataset(Dataset):
                         continue
                     # seconds to miliseconds
                     time = time *1000
+                    
+                    # Determine the grid patches to which this t-f node belongs
 
                     # The highest frequency patch that is allowed given the min and max
                     # frequencies
@@ -277,8 +285,22 @@ class AudioTonalDataset(Dataset):
 
     def __len__(self):
         return sum(self.num_patches)
-
+    
     def __getitem__(self, idx):
+        '''Returns the spectrogram patch with index "idx" along with its annotation mask.
+        The return value is a tuple, (spectrogram, annotation_mask)
+        '''
+        return self.get_datum(idx, return_db = False)
+
+    def get_datum(self, idx, return_db = False):
+        '''
+        Gets the spectrogram patch with index "idx" along with its annotation mask.
+        :param idx: the index of the spectrogram patch to be fetched
+        :param return_db: if True, returns a DB scale spectrogram; else, returns a
+            normalized spectrogram
+        :returns: a tuple, (spectrogram, annotation_mask)
+
+        '''
         ## Determine which file corresponds to idx ##
         if idx >= len(self):
             raise IndexError(f"Dataset index ({idx}) out of bounds for length ({len(self)}).")
@@ -317,7 +339,7 @@ class AudioTonalDataset(Dataset):
                 min_freq = self.min_freq if self.full_freq else start_freq,
                 max_freq = self.max_freq if self.full_freq else end_freq,
                 start_time = padded_start_time, end_time = padded_end_time,
-                window_fn = self.window_fn)
+                window_fn = self.window_fn, return_db = return_db)
         
         # get contours
         contours = None
@@ -359,7 +381,7 @@ class AudioTonalDataset(Dataset):
 
 class BalancedDataset(Dataset):
     def __init__(self, dataset, positive_set,
-            positive_proportion = 0.5):
+            positive_proportion = 0.5, seed = None):
         '''
         A dataset that rebalances another dataset such that a certain
         proportion of the indices correspond to positive labels. The
@@ -370,19 +392,28 @@ class BalancedDataset(Dataset):
         majority class are selected for inclusion.
 
         :param dataset: the dataset for which a balanced dataset will be
-                        created
+            created
         :param positive_set: a Python set that contains all of the indices
-                             in dataset that correspond to a positive
-                             label
+            in dataset that correspond to a positive
+            label
         :param positive_proportion: the proportion of indices in this
-                                    new dataset that will correspond to
-                                    positive labels
+            new dataset that will correspond to
+            positive labels
+        :param seed: if not None, seeds to creation of the BalancedDataset with this integer value
 
         '''
         
 
         positive_indices = np.array(list(positive_set))
         negative_indices = np.array(list(set(range(len(dataset))) - positive_set))
+
+
+        # Seed shuffle to make dataset formation deterministic
+        if seed != None:
+            np.sort(positive_indices)
+            np.sort(negative_indices)
+            np.random.seed(seed)
+
         np.random.shuffle(positive_indices)
         np.random.shuffle(negative_indices)
 
