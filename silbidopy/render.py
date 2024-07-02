@@ -28,6 +28,7 @@ def getFrames(audioFile, frame_time_span = 8, step_time_span = 2,
     start_frame = int(start_time / 1000 * wav_data.rate)
     end_frame = int((end_time / 1000 + frame_time_span / 1000 - step_time_span / 1000)* wav_data.rate)
 
+
     frame_sample_span = int(math.floor(frame_time_span / 1000 * wav_data.rate))
     step_sample_span = step_time_span / 1000 * wav_data.rate
     # No frames if the audio file is too short
@@ -104,7 +105,7 @@ def getComplexSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2,
 
 def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip_min = 0,
                    spec_clip_max = 6, min_freq = 5000, max_freq = 50000,
-                   start_time = 0, end_time=-1, window_fn = None):
+                   start_time = 0, end_time=-1, window_fn = None, return_db = False):
     '''
     Gets and returns a two-dimensional list in which the values encode a spectrogram.
 
@@ -123,40 +124,20 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
         before the the frames are used in the spectrogram. The function must receive
         one positional argument, n, and then return an array of length n.
         For example, window_fn(5) could return [0.1,0.2,0.4,0.2,0.1]
+    :param return_db: if True, the returned spectrogram is in DB scale; else, the
+        returned spectrogram is normalized
     :returns: A tuple with both the spectrogram and the time at which the
         spectrogram ended in ms: (spectogram, end_time)
     '''
 
     freq_resolution = 1000 / frame_time_span
 
-    # Load audio file
-    if type(audioFile) == wavio.Wav:
-        wav_data = audioFile
-    else:
-        wav_data = wavio.read(audioFile)
-    
-    # Rescale data if sample width is > 2
-    if wav_data.sampwidth > 2:
-            wav_data.data //= 2 ** (8 * (wav_data.sampwidth - 2))
-
-    # #
-    # Split the wave signal into overlapping frames
-    # #
-
-    start_frame = int(start_time / 1000 * wav_data.rate)
-    end_frame = int((end_time / 1000 + frame_time_span / 1000 - step_time_span / 1000)* wav_data.rate)
-
-    frame_sample_span = int(math.floor(frame_time_span / 1000 * wav_data.rate))
-    step_sample_span = step_time_span / 1000 * wav_data.rate
-    # No frames if the audio file is too short
-    if wav_data.data[start_frame:end_frame].shape[0] < frame_sample_span:
-        frames = []
-        return np.array([[]], dtype=float), start_time
-    else:
-        frames = frame_signal(wav_data.data.ravel()[start_frame:end_frame], frame_sample_span, step_sample_span)
-    
-    if window_fn != None:
-       frames = frames * window_fn(frames.shape[1]) 
+    frames = getFrames(audioFile,
+            frame_time_span = frame_time_span,
+            step_time_span = step_time_span,
+            start_time = start_time,
+            end_time = end_time, window_fn = window_fn)
+ 
 
     # #
     # Make spectrogram
@@ -173,11 +154,16 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
     spectrogram = np.log10(spectrogram)
 
     # Flip spectrogram to match expectations for display
-    # Also normalize
     spectrogram = spectrogram[::-1,]
-    spectrogram = normalize3(spectrogram, spec_clip_min, spec_clip_max)
 
     actual_end_time = start_time + spectrogram.shape[1] * step_time_span
+
+    if return_db:
+        return 20 * spectrogram, actual_end_time
+
+    # normalize 0-1
+    spectrogram = normalize3(spectrogram, spec_clip_min, spec_clip_max)
+
     return spectrogram, actual_end_time
 
 def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
@@ -203,11 +189,15 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     :returns: annotation mask
     '''
 
+    freq_resolution = 1000 / frame_time_span
     
+    # The spectrogram must start at min_freq = 0. We therefore need to readjust the min and max frequencies
+    max_freq = max_freq - (max_freq % freq_resolution)
+    min_freq = min_freq - (min_freq % freq_resolution)
 
     # Get dimensions for mask
     image_width = int((end_time - start_time) / step_time_span)
-    image_height = int((max_freq - min_freq) * frame_time_span/1000)
+    image_height = int((max_freq - min_freq) / freq_resolution)
 
     mask = np.zeros((image_height, image_width))
 
@@ -219,7 +209,6 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     if len(annotations) == 0:
          return mask
 
-    freq_resolution = 1000 / frame_time_span
     time_span = (end_time - start_time)
 
     # plot the portions of annotations that are within the time-frequency range
@@ -285,7 +274,7 @@ def getAnnotationMask(annotations, frame_time_span = 8, step_time_span = 2,
     return mask
 
 def expand_annotation_mask(annotation_mask, spectrogram,
-        threshold = 0.9, max_distance = 5, min_snr = None):
+        threshold = 0.9, max_distance = 5, min_snr = 0.98):
     '''Widens the an annotation mask based on the energy levels in
     the corresponding spectrogram.
 
@@ -305,8 +294,8 @@ def expand_annotation_mask(annotation_mask, spectrogram,
     # if no tonal energy
     if mask.sum()== 0:
         return mask
-
-    background_energy = spectrogram[mask == 0].sum()/(mask==0).sum()
+    
+    background_energy = spectrogram[np.where(mask == 0)].sum()/(mask==0).sum()
 
     for i,j in np.ndindex(mask.shape):
         if annotation_mask[i,j] == 0:
