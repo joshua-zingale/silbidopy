@@ -51,7 +51,7 @@ def writeContoursBinary(filename, contours,
         If all fields are specified, then the dictionary would look as follows:
         {"score": 0.8, "confidence": 1.0, "species": "Baleen Whale", "call": "D",
         "tfnodes": [
-            {"time": 3.25, "freq": 50.125, "snr": 6.6, "phase", 0.25, "ridge", 1.0},
+            {"time": 3.25, "freq": 50.125, "snr": 6.6, "phase": 0.25, "ridge": 1.0},
             {"time":...},
             ...,
         ]}
