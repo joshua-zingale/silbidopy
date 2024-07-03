@@ -51,7 +51,6 @@ class TonalHeader:
         self.headerSize = None
         self.version = None
 
-
         try:
             magicStr = str(file.read(self.magicLen), 'utf-8')
         except:
@@ -145,7 +144,7 @@ class TonalHeader:
 	
     def hasSNR(self):
         '''Is signal to noise ratio available for each tonal?'''
-        return (self.bitMask * self.SNR) > 0
+        return (self.bitMask & self.SNR) > 0
 
     def hasPhase(self):
         '''Is phase available for each tonal?'''
