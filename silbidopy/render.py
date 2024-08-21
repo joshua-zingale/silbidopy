@@ -137,7 +137,14 @@ def getSpectrogram(audioFile, frame_time_span = 8, step_time_span = 2, spec_clip
             step_time_span = step_time_span,
             start_time = start_time,
             end_time = end_time, window_fn = window_fn)
- 
+    
+    # If there was not a long enough segment to form a whole frame,
+    # raise an error
+    if frames.size == 0:
+        raise ValueError(f"""
+        A long enough segment of audio samples was not available to calculate even a single discrete fourier transform 
+        {start_time=}, {end_time=}
+        """)
 
     # #
     # Make spectrogram
