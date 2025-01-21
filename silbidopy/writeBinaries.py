@@ -1,4 +1,6 @@
 import struct
+import dataclasses
+
 SHORT_LEN = 2
 INT_LEN = 4
 DOUBLE_LEN = 8
@@ -38,7 +40,7 @@ def writeContoursBinary(filename, contours,
         confidence = False, species = False, call = False):
     '''Writes contours to a silbido binary file.
 
-    UserVersion is currently set to 0. I do not know what userversion means.
+    UserVersion is currently set to 0.
     The fields that are to be present in this annotation file must be specified
     in the keyword arguments, which all, save comment and timestamp, are boolean.
     comment and timestamp being the empty string means that there will not be saved
@@ -72,10 +74,10 @@ def writeContoursBinary(filename, contours,
         bitMask += PHASE
     if ridge:
         bitMask += RIDGE
-    if len(comment) > 0 :
+    if len(comment) > 0:
         bitMask += USERCOMMENT
         headerSize += 2 + len(comment)
-    if len(timestamp) > 0 :
+    if len(timestamp) > 0:
         bitMask += TIMESTAMP
         headerSize += 2 + len(timestamp)
     if score:
@@ -87,10 +89,9 @@ def writeContoursBinary(filename, contours,
     if call:
         bitMask += CALL
 
-    bitMask = bitMask.to_bytes(SHORT_LEN, byteorder = "big")
-    userVersion = (0).to_bytes(SHORT_LEN, byteorder = "big")
-    headerSize = headerSize.to_bytes(INT_LEN, byteorder = "big")
-
+    bitMask = bitMask.to_bytes(SHORT_LEN, byteorder="big")
+    userVersion = (0).to_bytes(SHORT_LEN, byteorder="big")
+    headerSize = headerSize.to_bytes(INT_LEN, byteorder="big")
 
     file = open(filename, 'wb')
 
@@ -103,23 +104,13 @@ def writeContoursBinary(filename, contours,
     file.write(userVersion)
     file.write(headerSize)
     if comment:
-            L = len(comment)
-            if L >= 2**16:
-                raise RuntimeException("Length of comment is too long")
-            file.write(L.to_bytes(SHORT_LEN, byteorder="big"))
-            file.write(comment.encode("utf-8"))
+        write_utf8_string(file, comment)
     if timestamp:
-            L = len(timestamp)
-            if L >= 2**16:
-                raise RuntimeException("Length of timestamp is too long")
-            file.write(L.to_bytes(SHORT_LEN, byteorder="big"))
-            file.write(timestamp.encode("utf-8"))
-
+        write_utf8_string(timestamp)
 
     # Write tonal meta deta
     # graphId is an arbitrary value as of now
     graphId = (14567891234567891234).to_bytes(LONG_LEN, byteorder = "big")
-    
 
     # Write tonals  
     for contour in contours:
@@ -131,14 +122,14 @@ def writeContoursBinary(filename, contours,
         if species:
             L = len(contour["species"])
             if L >= 2**16:
-                raise RuntimeException("Length of species name is too long")
+                raise RuntimeError("Length of species name is too long")
 
             file.write(L.to_bytes(SHORT_LEN, byteorder="big"))
             file.write(contour["species"].encode("utf-8"))
         if call:
             L = len(contour["call"])
             if L >= 2**16:
-                raise RuntimeException("Length of call name is too long")
+                raise RuntimeError("Length of call name is too long")
 
             file.write(L.to_bytes(SHORT_LEN, byteorder="big"))
             file.write(contour["call"].encode("utf-8"))
@@ -164,23 +155,49 @@ def writeContoursBinary(filename, contours,
 
 
 
-def writeTimeFrequencyBinary(filename, contours):
+def writeTimeFrequencyBinary(filename, contours, userVersion=0):
     '''Writes only time and frequency and leaves no comment nor timestamp.
-    graphId written is currently an arbitrary number and is the same for each write.
 
-    UserVersion is currently set to 0. I do not know what userversion means.
-    
     :param filename: the name of the file to which to be written
-    :param contours: A two dimensional array containing tuples (time, frequence),
-                      where both are a floating point number.
-                      e.g. [[(1.2,75.23), (1.25, 74.77)], [(4.9,62.48), (5.52, 60.29)]]
+    :param contours: Each contour is either
+                     1.  a dataclass with mandatory fields:
+                         time - array of offsets in s
+                         freq - array of frequencies in Hz
+                         and optional fields (must be in every contour if
+                         present):
+                         species - species name
+                         call - call name
+                      or
+                     2.  A list of (time, frequency) tuples
+                         e.g. [[(1.2,75.23), (1.25, 74.77)],
+                               [(4.9,62.48), (5.52, 60.29)]
+                              ]
+    :param userVersion:  User's internal version number (e.g. for multiple
+        annotations of the same file)
     '''
-    
-    version = DET_VERSION.to_bytes(SHORT_LEN, byteorder = "big")
-    bitMask = (TIME | FREQ).to_bytes(SHORT_LEN, byteorder = "big")
-    userVersion = (0).to_bytes(SHORT_LEN, byteorder = "big")
-    headerSize = (3 * SHORT_LEN + INT_LEN + len(HEADER_STR)).to_bytes(INT_LEN, byteorder = "big") # ASSUMES no comments
 
+    # Determine what will be written
+
+    # See if we should be expecting dataclass fields
+    expect_fields = False
+    fields = []
+    if len(contours) > 0:
+        # Assume contours is homogeneous, infer structure from first contour
+        expect_fields = dataclasses.is_dataclass(contours[0])
+        # Retrieve field names
+        fields = [f.name for f in dataclasses.fields(contours[0])]
+        if "time" not in fields or "freq" not in fields:
+            raise RuntimeError("Contours must have time and freq fields")
+
+    bitMask = (TIME | FREQ)
+    if "species" in fields:
+        bitMask |= SPECIES
+    if "call" in fields:
+        bitMask |= CALL
+
+    # ASSUMES no comments
+    headerSize = (3 * SHORT_LEN + INT_LEN +
+                  len(HEADER_STR)).to_bytes(INT_LEN, byteorder = "big")
 
     file = open(filename, 'wb')
 
@@ -188,25 +205,60 @@ def writeTimeFrequencyBinary(filename, contours):
     file.write(HEADER_STR)
 
     # Write header
-    file.write(version)
-    file.write(bitMask)
-    file.write(userVersion)
+    file.write(DET_VERSION.to_bytes(SHORT_LEN, byteorder="big"))
+    file.write(bitMask.to_bytes(SHORT_LEN, byteorder="big"))
+    file.write(userVersion.to_bytes(SHORT_LEN, byteorder="big"))
     file.write(headerSize)
 
-
     # Write tonal meta deta
-    # graphId is an arbitrary value as of now
-    graphId = (14567891234567891234).to_bytes(LONG_LEN, byteorder = "big")
-    
+
+    # Specific to graph-based processing described in "Automated
+    # extraction of odontocete whistle contours, Roch et al. 2011
+    # DOI: 10.1121/1.3624821.  Unused here.
+    graphId = (0).to_bytes(LONG_LEN, byteorder="big")
 
     # Write tonals  
     for contour in contours:
-        N = len(contour).to_bytes(INT_LEN, byteorder = "big") # number of points in contour
-        
+
+        # number of points in contour
+        if expect_fields:
+            N = len(contour.time)
+        else:
+            N = len(contour)
+
+        if expect_fields:
+            # contour is a dataclass with fields
+            if bitMask & SPECIES:
+                write_utf8_string(file, contour.species)
+            if bitMask & CALL:
+                write_utf8_string(file, contour.call)
+
         file.write(graphId)
-        file.write(N)
+        file.write(N.to_bytes(INT_LEN, byteorder="big"))
 
         # Write all time and frequency nodes for the current contour
-        for time, freq in contour:
-            file.write(struct.pack('>d', time))
-            file.write(struct.pack('>d', freq))
+        if expect_fields:
+            # contour is a dataclass with fields
+            if bitMask & TIME and bitMask & FREQ:
+                for idx in range(N):
+                    file.write(struct.pack('>d', contour.time[idx]))
+                    file.write(struct.pack('>d', contour.freq[idx]))
+        else:
+            # List of iterables (e.g., tuples)
+            for time, freq in contour:
+                file.write(struct.pack('>d', time))
+                file.write(struct.pack('>d', freq))
+
+
+def write_utf8_string(file, strval):
+    """
+
+    :param file:  handle to output file
+    :param strval:  text to write
+    :return: None
+    """
+    n = len(strval)
+    if n > 2 ** 16:
+        raise RuntimeError("Length of string is too long")
+    file.write(n.to_bytes(SHORT_LEN, byteorder="big"))
+    file.write(strval.encode("utf-8"))
